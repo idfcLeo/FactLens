@@ -46,7 +46,65 @@ A video walkthrough of **3 minutes or less** should demonstrate:
 
 ## Approach
 
-### Architecture & Pipeline
+### Architecture Diagram
+
+```mermaid
+flowchart TD
+    subgraph Client ["Frontend Interface (HTML5 / Vanilla JS)"]
+        UI["Web Dashboard (127.0.0.1:8000)"]
+        UploadBox["PDF Upload Drag-and-Drop"]
+        RelCards["Side-by-Side Receipt Cards"]
+        PageModal["PDF Page Image Preview Modal"]
+        FeedbackControls["Reviewer Action Controls (Approve / Reject / Override)"]
+        WatchlistUI["Extraction Watchlist"]
+    end
+
+    subgraph Backend ["Flask Backend API (app.py)"]
+        API_Doc["POST /api/documents"]
+        API_Know["GET /api/knowledge"]
+        API_Preview["GET /api/documents/:id/pages/:num/preview"]
+        API_Feedback["POST /api/relations/:id/feedback"]
+    end
+
+    subgraph Engine ["FactLens Extractor Engine (factlens/extractor.py)"]
+        fitz["PyMuPDF Layout & Table Extractor"]
+        TableParse["fitz.Page.find_tables() Grid Parser"]
+        FactProp["Numeric & Semantic Fact Proposer"]
+        Normalizer["Unit & Period Normalizer (_normalized_number & _normalize_period_year)"]
+        TFIDF["TF-IDF Embedding Engine (scikit-learn)"]
+        Classifier["Deterministic Relation Classifier (relate)"]
+    end
+
+    subgraph Storage ["Durable SQLite Database (data/factlens.db / db.py)"]
+        TBL_Docs[("documents")]
+        TBL_Facts[("facts")]
+        TBL_Rels[("relations")]
+        TBL_FTS[("facts_fts (FTS5 Search Index)")]
+        TBL_Feedback[("user_feedback")]
+        TBL_Diag[("diagnostics")]
+    end
+
+    UploadBox -->|Multipart PDF Upload| API_Doc
+    API_Doc --> fitz
+    fitz --> TableParse
+    TableParse --> FactProp
+    FactProp --> Normalizer
+    Normalizer --> TFIDF
+    TFIDF --> Classifier
+    
+    Classifier -->|Save Extracted Knowledge| Storage
+    Storage -->|JSON State Response| API_Know
+    API_Know --> RelCards
+    API_Know --> WatchlistUI
+
+    API_Preview -->|Render PNG Pixmap| fitz
+    fitz -->|Image Stream| PageModal
+
+    FeedbackControls -->|POST Feedback Action| API_Feedback
+    API_Feedback -->|Update Feedback State| TBL_Feedback
+```
+
+### Pipeline Steps
 
 1. **Ingest & Layout Extraction**: Accepts arbitrary PDF uploads and extracts text layout and structured tables using `PyMuPDF` (`fitz`).
 2. **Propose Facts & Table Parsing**:
