@@ -79,7 +79,10 @@ def upload():
         try:
             extracted = extract_pdf(target, doc_id)
         except Exception as exc:
-            target.unlink(missing_ok=True)
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass
             return jsonify(error=f"Could not read {file.filename}: {exc}"), 422
 
         documents.append({"id": doc_id, "name": file.filename, "facts": len(extracted)})

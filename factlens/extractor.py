@@ -181,17 +181,19 @@ def extract_pdf(path: str | Path, document_id: str | None = None) -> list[Fact]:
     facts: list[Fact] = []
     
     doc = fitz.open(str(path))
-    for page_number, fitz_page in enumerate(doc, start=1):
-        page_text = fitz_page.get_text("layout") or fitz_page.get_text("text") or ""
-        offset = 0
-        for sentence in SENTENCE.split(page_text):
-            facts.extend(_sentence_facts(document_id, path.name, page_number, sentence, offset) or [])
-            offset += len(sentence) + 1
-            
-        t_facts = _table_facts(document_id, path.name, page_number, doc, page_number)
-        facts.extend(t_facts)
-        
-    doc.close()
+    try:
+        for page_number, fitz_page in enumerate(doc, start=1):
+            page_text = fitz_page.get_text("text", sort=True) or ""
+            offset = 0
+            for sentence in SENTENCE.split(page_text):
+                facts.extend(_sentence_facts(document_id, path.name, page_number, sentence, offset) or [])
+                offset += len(sentence) + 1
+                
+            t_facts = _table_facts(document_id, path.name, page_number, doc, page_number)
+            facts.extend(t_facts)
+    finally:
+        doc.close()
+
     return facts
 
 
