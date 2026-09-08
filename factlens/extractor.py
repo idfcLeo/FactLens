@@ -11,7 +11,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 NUMBER = re.compile(r"(?<![\w.])(?:₹|\$|€|£)?\s?\d+(?:,\d{3})*(?:\.\d+)?\s?(?:%|percent|crore|million|billion|bn|mn|lakh)?\b", re.I)
-YEAR = re.compile(r"\b(?:FY\s?)?20\d{2}(?:[-–/]\d{2,4})?\b|\bQ[1-4]\s*(?:FY\s*)?\d{2,4}\b", re.I)
+YEAR = re.compile(r"\b(?:FY\s*)?(?:20\d{2}|\d{2})(?:[-–/]\d{2,4})?\b|\bQ[1-4]\s*(?:FY\s*)?\d{2,4}\b", re.I)
 SENTENCE = re.compile(r"(?<=[.!?])\s+|\n{2,}")
 MONTHS = {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
           "january", "february", "march", "april", "june", "july", "august", "september", "october", "november", "december"}
@@ -98,7 +98,14 @@ def _normalize_period_year(period: Optional[str]) -> Optional[int]:
     if not period:
         return None
     m = re.search(r"20\d{2}", period)
-    return int(m.group(0)) if m else None
+    if m:
+        return int(m.group(0))
+    m2 = re.search(r"\b(?:FY\s*)?(\d{2})\b", period, re.I)
+    if m2:
+        yr = int(m2.group(1))
+        if 0 <= yr <= 50:
+            return 2000 + yr
+    return None
 
 
 def _meaningful_number(match: re.Match[str], sentence: str) -> bool:
@@ -248,7 +255,7 @@ def relate(facts: list[Fact]) -> list[dict]:
             has_numbers = (ln is not None and rn is not None)
 
             # 1. Numeric claims comparison
-            if has_numbers and same_period and (sim_score >= 0.20 or bool(_tokens(left.claim) & _tokens(right.claim))):
+            if has_numbers and same_period and (sim_score >= 0.15 or bool(_tokens(left.claim) & _tokens(right.claim))):
                 mult = 1.0
                 if left.currency == "USD" and right.currency == "INR":
                     mult = 83.0
@@ -262,24 +269,23 @@ def relate(facts: list[Fact]) -> list[dict]:
                 reason = "Same period and similar claim language; values are " + ("within 3.0%." if close else f"materially different ({diff_pct:.1%} variance: {left.value} vs {right.value}).")
                 confidence = round(min(0.95, 0.50 + sim_score * 0.45), 2)
 
-            elif has_numbers and different_period and (sim_score >= 0.20 or bool(_tokens(left.claim) & _tokens(right.claim))):
+            elif has_numbers and different_period and (sim_score >= 0.15 or bool(_tokens(left.claim) & _tokens(right.claim))):
                 relation = "reconciles"
-                reason = f"The evidence refers to different reporting periods ({left.period} vs {right.period}), so the apparent variation is contextual."
-                confidence = round(min(0.90, 0.40 + sim_score * 0.50), 2)
+                reason = f"The evidence refers to different reporting periods ({left.period or y1} vs {right.period or y2}), so the apparent variation is contextual."
+                confidence = round(min(0.95, 0.55 + sim_score * 0.40), 2)
 
-            elif sim_score < 0.30:
+            elif sim_score < 0.28:
                 continue
-            
-            # 2. Semantic non-numeric or general claim comparison
-            elif different_period and (sim_score >= 0.38 or (left.subject == right.subject and left.subject != "unclassified statement")):
-                relation = "reconciles"
-                reason = f"The evidence refers to different reporting periods ({left.period} vs {right.period}), so the apparent variation is contextual."
-                confidence = round(min(0.90, 0.40 + sim_score * 0.50), 2)
 
-            elif sim_score >= 0.52:
+            elif different_period and (sim_score >= 0.35 or (left.subject == right.subject and left.subject != "unclassified statement")):
+                relation = "reconciles"
+                reason = f"The evidence refers to different reporting periods ({left.period or y1} vs {right.period or y2}), so the apparent variation is contextual."
+                confidence = round(min(0.95, 0.50 + sim_score * 0.45), 2)
+
+            elif sim_score >= 0.50:
                 relation = "corroborates"
                 reason = "Different wording has substantial semantic topic overlap; review the linked receipts to verify identity."
-                confidence = round(min(0.90, 0.35 + sim_score * 0.55), 2)
+                confidence = round(min(0.95, 0.40 + sim_score * 0.50), 2)
             else:
                 continue
 
@@ -314,4 +320,13 @@ def relate(facts: list[Fact]) -> list[dict]:
         if pair_key not in grouped or relation["confidence"] > grouped[pair_key]["confidence"]:
             grouped[pair_key] = relation
 
-    return sorted(grouped.values(), key=lambda x: x["confidence"], reverse=True)[:100]
+    all_rels = list(grouped.values())
+    
+    # Balanced selection across relation types so reconciles & contradicts are prominently included
+    corrob_rels = sorted([r for r in all_rels if r["type"] == "corroborates"], key=lambda x: x["confidence"], reverse=True)
+    contra_rels = sorted([r for r in all_rels if r["type"] == "contradicts"], key=lambda x: x["confidence"], reverse=True)
+    recon_rels = sorted([r for r in all_rels if r["type"] == "reconciles"], key=lambda x: x["confidence"], reverse=True)
+
+    # Balance across categories
+    result = recon_rels[:40] + contra_rels[:30] + corrob_rels[:50]
+    return sorted(result, key=lambda x: x["confidence"], reverse=True)[:100]
