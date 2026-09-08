@@ -10,7 +10,6 @@ import fitz  # PyMuPDF
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Match numeric values (allow unformatted multi-digit integers without truncating to 3 digits)
 NUMBER = re.compile(r"(?<![\w.])(?:₹|\$|€|£)?\s?\d+(?:,\d{3})*(?:\.\d+)?\s?(?:%|percent|crore|million|billion|bn|mn|lakh)?\b", re.I)
 YEAR = re.compile(r"\b(?:FY\s?)?20\d{2}(?:[-–/]\d{2,4})?\b|\bQ[1-4]\s*(?:FY\s*)?\d{2,4}\b", re.I)
 SENTENCE = re.compile(r"(?<=[.!?])\s+|\n{2,}")
@@ -95,15 +94,19 @@ def _normalized_number(value: Optional[str]) -> Optional[float]:
     return n
 
 
+def _normalize_period_year(period: Optional[str]) -> Optional[int]:
+    if not period:
+        return None
+    m = re.search(r"20\d{2}", period)
+    return int(m.group(0)) if m else None
+
+
 def _meaningful_number(match: re.Match[str], sentence: str) -> bool:
     value = _clean(match.group(0))
-    # Ignore standalone 4-digit years like 2024 or 2021-22
     if re.fullmatch(r"20\d{2}", value) or re.fullmatch(r"20\d{2}[-/]\d{2,4}", value):
         return False
-    # Ignore day numbers in date strings e.g. "Dec 2021"
     if re.search(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+" + re.escape(value), sentence, re.I):
         return False
-    # Ignore footnote numbers at start of text line e.g. "41 World Economic Outlook"
     if match.start() == 0 and re.match(r"^\d{1,2}\s+[A-Z]", sentence):
         return False
     return True
@@ -156,7 +159,6 @@ def _table_facts(document_id: str, name: str, page: int, doc: fitz.Document, pag
             for row_idx, row in enumerate(df[1:], start=1):
                 row_cells = [str(cell or "").strip() for cell in row]
                 row_label = _clean(row_cells[0]) if row_cells else ""
-                # Skip rows with no text label or row labels that lack real text tokens
                 if not row_label or not _tokens(row_label):
                     continue
                 for col_idx, cell_val in enumerate(row_cells[1:], start=1):
@@ -164,7 +166,6 @@ def _table_facts(document_id: str, name: str, page: int, doc: fitz.Document, pag
                     cell_val = _clean(cell_val)
                     if not cell_val or len(cell_val) < 2:
                         continue
-                    # Skip cells that are just date headers e.g. 2021, 2021/22
                     if re.fullmatch(r"(?:FY\s*)?20\d{2}(?:[-/]\d{2,4})?", cell_val, re.I):
                         continue
                     matches = [m for m in NUMBER.finditer(cell_val) if _meaningful_number(m, cell_val)]
@@ -238,11 +239,16 @@ def relate(facts: list[Fact]) -> list[dict]:
                 tokens_r = _tokens(right.claim)
                 sim_score = len(tokens_l & tokens_r) / max(1, len(tokens_l | tokens_r))
 
-            same_period = left.period and right.period and left.period == right.period
-            ln, rn = left.normalized_value, right.normalized_value
+            y1 = _normalize_period_year(left.period)
+            y2 = _normalize_period_year(right.period)
+            same_period = (y1 is not None and y2 is not None and y1 == y2)
+            different_period = (y1 is not None and y2 is not None and y1 != y2)
 
-            # Same period numeric evaluation: requires shared tokens and reasonable similarity
-            if ln is not None and rn is not None and same_period and (sim_score >= 0.25 or bool(_tokens(left.claim) & _tokens(right.claim))):
+            ln, rn = left.normalized_value, right.normalized_value
+            has_numbers = (ln is not None and rn is not None)
+
+            # 1. Numeric claims comparison
+            if has_numbers and same_period and (sim_score >= 0.20 or bool(_tokens(left.claim) & _tokens(right.claim))):
                 mult = 1.0
                 if left.currency == "USD" and right.currency == "INR":
                     mult = 83.0
@@ -253,18 +259,24 @@ def relate(facts: list[Fact]) -> list[dict]:
                 close = diff_pct < 0.03
 
                 relation = "corroborates" if close else "contradicts"
-                reason = "Same period and similar claim language; values are " + ("within 3.0%." if close else f"materially different ({diff_pct:.1%} variance).")
+                reason = "Same period and similar claim language; values are " + ("within 3.0%." if close else f"materially different ({diff_pct:.1%} variance: {left.value} vs {right.value}).")
                 confidence = round(min(0.95, 0.50 + sim_score * 0.45), 2)
 
-            elif sim_score < 0.32:
-                continue
-            
-            elif left.period and right.period and left.period != right.period and (sim_score >= 0.45 or (left.subject == right.subject and left.subject != "unclassified statement")):
+            elif has_numbers and different_period and (sim_score >= 0.20 or bool(_tokens(left.claim) & _tokens(right.claim))):
                 relation = "reconciles"
                 reason = f"The evidence refers to different reporting periods ({left.period} vs {right.period}), so the apparent variation is contextual."
                 confidence = round(min(0.90, 0.40 + sim_score * 0.50), 2)
 
-            elif sim_score >= 0.58:
+            elif sim_score < 0.30:
+                continue
+            
+            # 2. Semantic non-numeric or general claim comparison
+            elif different_period and (sim_score >= 0.38 or (left.subject == right.subject and left.subject != "unclassified statement")):
+                relation = "reconciles"
+                reason = f"The evidence refers to different reporting periods ({left.period} vs {right.period}), so the apparent variation is contextual."
+                confidence = round(min(0.90, 0.40 + sim_score * 0.50), 2)
+
+            elif sim_score >= 0.52:
                 relation = "corroborates"
                 reason = "Different wording has substantial semantic topic overlap; review the linked receipts to verify identity."
                 confidence = round(min(0.90, 0.35 + sim_score * 0.55), 2)
@@ -281,7 +293,6 @@ def relate(facts: list[Fact]) -> list[dict]:
                 "right": right.json()
             })
 
-    # Strict deduplication: collapse redundant comparisons for the same document pair, relation type, subject, period, and value
     grouped: dict[tuple, dict] = {}
     for relation in relations:
         left_f = relation["left"]

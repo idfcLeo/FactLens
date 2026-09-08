@@ -31,9 +31,10 @@ function render() {
 
   $('#relations').innerHTML = rel.length ? rel.map(r => {
     const isApproved = r.user_action === 'approve';
+    const isRejected = r.user_action === 'reject';
     const isOverridden = r.user_action === 'override';
     return `
-      <article class="relation" id="card-${escape(r.id)}">
+      <article class="relation ${isRejected ? 'rejected' : ''} ${isApproved ? 'approved' : ''}" id="card-${escape(r.id)}">
         <div class="relation-head">
           <span class="badge ${r.type}">${r.type.toUpperCase()}</span>
           <span class="confidence">${Math.round(r.confidence * 100)}% signal</span>
@@ -44,16 +45,17 @@ function render() {
           ${evidence(r.right)}
         </div>
         <div class="feedback-actions">
-          <button class="btn-approve" onclick="sendFeedback('${escape(r.id)}', 'approve')">${isApproved ? '✓ Approved' : '✓ Approve'}</button>
-          <button class="btn-reject" onclick="sendFeedback('${escape(r.id)}', 'reject')">✗ Reject</button>
+          <button class="btn-approve ${isApproved ? 'active' : ''}" onclick="sendFeedback('${escape(r.id)}', 'approve')">${isApproved ? '✓ Approved' : '✓ Approve'}</button>
+          <button class="btn-reject ${isRejected ? 'active' : ''}" onclick="sendFeedback('${escape(r.id)}', 'reject')">${isRejected ? '✗ Rejected' : '✗ Reject'}</button>
           <select class="feedback-select" onchange="sendFeedback('${escape(r.id)}', 'override', this.value)">
             <option value="">-- Override Classification --</option>
             <option value="corroborates" ${r.type === 'corroborates' ? 'selected' : ''}>Corroborates</option>
             <option value="contradicts" ${r.type === 'contradicts' ? 'selected' : ''}>Contradicts</option>
             <option value="reconciles" ${r.type === 'reconciles' ? 'selected' : ''}>Reconciles</option>
           </select>
-          ${isApproved ? '<span class="review-tag">✓ Approved by reviewer</span>' : ''}
-          ${isOverridden ? '<span class="review-tag">✎ Overridden by reviewer</span>' : ''}
+          ${isApproved ? '<span class="review-tag tag-approved">✓ Approved by reviewer</span>' : ''}
+          ${isRejected ? '<span class="review-tag tag-rejected">✗ Rejected by reviewer</span>' : ''}
+          ${isOverridden ? `<span class="review-tag tag-overridden">✎ Overridden to ${escape(r.type.toUpperCase())} by reviewer</span>` : ''}
         </div>
       </article>
     `;

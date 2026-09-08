@@ -44,7 +44,10 @@ main { padding: 58px 0 80px; }
 h3 { font-size: 21px; }
 
 .relations { display: grid; gap: 14px; }
-.relation { background: white; border: 1px solid var(--line); padding: 22px; position: relative; }
+.relation { background: white; border: 1px solid var(--line); padding: 22px; position: relative; transition: all 0.2s ease; }
+.relation.rejected { opacity: 0.72; border-color: #e5a9a9; background: #fffcfc; }
+.relation.approved { border-color: #a0dba8; background: #fafdfa; }
+
 .relation-head { display: flex; justify-content: space-between; align-items: center; }
 .badge { font: 500 11px 'DM Mono'; letter-spacing: .06em; padding: 4px 8px; border-radius: 20px; background: var(--sky); }
 .badge.contradicts { background: var(--coral); }
@@ -64,9 +67,15 @@ h3 { font-size: 21px; }
 
 .feedback-actions { display: flex; gap: 8px; margin-top: 15px; padding-top: 12px; border-top: 1px dashed var(--line); align-items: center; }
 .btn-approve { background: #2e7d32; color: white; border: 0; padding: 5px 12px; font-size: 12px; }
+.btn-approve.active { background: #1b5e20; font-weight: bold; }
 .btn-reject { background: #c62828; color: white; border: 0; padding: 5px 12px; font-size: 12px; }
+.btn-reject.active { background: #b71c1c; font-weight: bold; }
 .feedback-select { padding: 4px 8px; font: 500 12px 'Source Sans 3'; border-radius: 4px; border: 1px solid var(--line); }
-.review-tag { font: 500 11px 'DM Mono'; color: #2e7d32; margin-left: auto; }
+
+.review-tag { font: 600 12px 'DM Mono', monospace; margin-left: auto; padding: 2px 8px; border-radius: 4px; }
+.review-tag.tag-approved { color: #1b5e20; background: #e8f5e9; }
+.review-tag.tag-rejected { color: #b71c1c; background: #ffebee; }
+.review-tag.tag-overridden { color: #d97706; background: #fffbe6; }
 
 /* Modal dialog */
 .preview-modal { border: none; border-radius: 8px; padding: 0; max-width: 800px; width: 90%; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }

@@ -207,9 +207,7 @@ class Database:
                 fb = feedback.get(r_dict["id"])
                 if fb:
                     r_dict["user_action"] = fb["action"]
-                    if fb["action"] == "reject":
-                        continue  # Exclude rejected relations from default active view
-                    elif fb["action"] == "override" and fb.get("override_type"):
+                    if fb["action"] == "override" and fb.get("override_type"):
                         r_dict["type"] = fb["override_type"]
                         r_dict["reason"] = f"Manually overridden to {fb['override_type']} by reviewer."
                 else:
