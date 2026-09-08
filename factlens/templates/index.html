@@ -1,28 +1,32 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FactLens — Evidence-First Knowledge Layer</title>
+  <title>FactLens — Evidence-First Knowledge Engine</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+  <!-- Ambient Gradient Background Glows -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
   <header class="app-header">
     <div class="header-container">
       <div class="brand">
-        <div class="brand-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        <div class="brand-logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
         </div>
         <div>
-          <div class="brand-title">FactLens</div>
-          <div class="brand-subtitle">Evidence-First Knowledge Layer for PDFs</div>
+          <div class="brand-title">FactLens <span class="version-tag">v2.5 PRO</span></div>
+          <div class="brand-subtitle">Evidence-First PDF Knowledge Graph Engine</div>
         </div>
       </div>
       <div class="header-actions">
-        <button class="btn-reset" id="reset">
+        <button class="btn-reset" id="reset" title="Clear local database store">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
           Reset Workspace
         </button>
@@ -31,88 +35,87 @@
   </header>
 
   <main class="app-main">
-    <section class="hero-section">
-      <div class="hero-badge">AUTOMATED CROSS-DOCUMENT DISCOVERY</div>
+    <section class="hero-card">
+      <div class="hero-badge">
+        <span class="pulse-dot"></span>
+        AUTOMATED CROSS-DOCUMENT AUDIT & PROVENANCE
+      </div>
       <h1>Every claim keeps its receipt.</h1>
-      <p>Upload independent PDF documents. FactLens extracts candidate facts, retaining exact page-level source receipts and comparing related evidence with TF-IDF embeddings and unit normalization.</p>
+      <p>Upload independent PDF documents. FactLens extracts candidate facts, retaining exact page-level source receipts and comparing related evidence with TF-IDF vector embeddings and unit normalization.</p>
     </section>
 
-    <!-- Interactive Upload Dropzone -->
-    <section class="upload-card" id="drop">
+    <!-- Upload Dropzone Container -->
+    <section class="upload-zone" id="drop">
       <input id="files" type="file" accept="application/pdf" multiple>
-      <div class="upload-zone-content">
-        <div class="upload-icon">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+      <div class="upload-zone-body">
+        <div class="upload-icon-wrapper">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
         </div>
-        <div class="upload-text">
-          <strong>Drag & drop PDF files here</strong>
-          <span>or click to browse — supports text & table PDFs up to 35 MB each</span>
+        <div class="upload-info">
+          <strong>Drop PDFs here or click to browse</strong>
+          <span>Supports text reports, tables, and financial statements (up to 35 MB each)</span>
         </div>
         <button class="btn-upload" id="upload">
           <span>Analyze PDFs</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
         </button>
       </div>
-      <div id="file-list-preview" class="file-list-preview"></div>
-      <div id="progress-bar-container" class="progress-bar-container"><div id="progress-bar" class="progress-bar"></div></div>
+      <div id="file-list-preview" class="file-chips-container"></div>
+      <div id="progress-bar-container" class="progress-bar-wrap"><div id="progress-bar" class="progress-bar-fill"></div></div>
     </section>
 
-    <p id="status" class="status-msg" aria-live="polite"></p>
+    <div id="status" class="status-banner" aria-live="polite"></div>
 
-    <!-- Metrics Dashboard Grid -->
-    <section class="metrics-grid" id="metrics"></section>
+    <!-- Metrics Dashboard Row -->
+    <section class="metrics-row" id="metrics"></section>
 
-    <!-- Controls Bar: Filter Tabs + Real-Time Search -->
-    <section class="controls-bar">
-      <div class="filters" id="filter-tabs">
-        <button class="filter-tab active" data-filter="all">All Relationships <span class="tab-count" id="count-all">0</span></button>
-        <button class="filter-tab corroborates" data-filter="corroborates">Corroborated <span class="tab-count" id="count-corroborates">0</span></button>
-        <button class="filter-tab contradicts" data-filter="contradicts">Contradictions <span class="tab-count" id="count-contradicts">0</span></button>
-        <button class="filter-tab reconciles" data-filter="reconciles">Explained by Context <span class="tab-count" id="count-reconciles">0</span></button>
+    <!-- Toolbar: Category Filter Tabs + Search -->
+    <section class="toolbar">
+      <div class="tabs-group" id="filter-tabs">
+        <button class="tab-btn active" data-filter="all">All Relationships <span class="tab-badge" id="count-all">0</span></button>
+        <button class="tab-btn tab-corroborates" data-filter="corroborates">Corroborated <span class="tab-badge" id="count-corroborates">0</span></button>
+        <button class="tab-btn tab-contradicts" data-filter="contradicts">Contradictions <span class="tab-badge" id="count-contradicts">0</span></button>
+        <button class="tab-btn tab-reconciles" data-filter="reconciles">Explained by Context <span class="tab-badge" id="count-reconciles">0</span></button>
       </div>
 
-      <div class="search-box">
+      <div class="search-input-wrap">
         <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         <input type="text" id="search-input" placeholder="Search claims, metrics, or documents..." autocomplete="off">
-        <button id="search-clear" class="search-clear" title="Clear search">&times;</button>
+        <button id="search-clear" class="search-clear-btn" title="Clear">&times;</button>
       </div>
     </section>
 
     <!-- Relationship Cards List -->
-    <section class="content-section">
-      <div class="section-header">
-        <div>
-          <h3>Relationship Review & Feedback Loop</h3>
-          <p>Claims are candidate facts. Review, approve, or override cross-document relationships.</p>
-        </div>
+    <section class="section-block">
+      <div class="section-title">
+        <h3>Relationship Review & Feedback Loop</h3>
+        <span>Review candidate evidence links and override judgments.</span>
       </div>
-      <div id="relations" class="relations-container"></div>
+      <div id="relations" class="cards-grid"></div>
     </section>
 
-    <!-- Extraction Watchlist Section -->
-    <section class="content-section">
-      <div class="section-header">
-        <div>
-          <h3>Extraction Watchlist & Diagnostics</h3>
-          <p>Known extraction limits, scanned PDFs, and uncertainties are transparently logged.</p>
-        </div>
+    <!-- Extraction Watchlist -->
+    <section class="section-block">
+      <div class="section-title">
+        <h3>Extraction Watchlist & Diagnostics</h3>
+        <span>Uncertainties, scanned PDFs, and table limits are transparently logged.</span>
       </div>
-      <div id="diagnostics" class="diagnostics-container"></div>
+      <div id="diagnostics" class="diagnostics-grid"></div>
     </section>
   </main>
 
-  <!-- PDF Page Image Preview Modal -->
-  <dialog id="preview-modal" class="preview-modal">
-    <div class="modal-wrapper">
-      <div class="modal-header">
-        <div class="modal-title-box">
+  <!-- PDF Page Preview Modal -->
+  <dialog id="preview-modal" class="preview-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <div class="dialog-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
           <h4 id="modal-title">PDF Page Preview</h4>
         </div>
-        <button id="modal-close" class="modal-close-btn">&times;</button>
+        <button id="modal-close" class="dialog-close-btn">&times;</button>
       </div>
-      <div class="modal-body">
-        <div id="modal-loader" class="modal-loader"><div class="spinner"></div><span>Rendering PDF Page...</span></div>
+      <div class="dialog-body">
+        <div id="modal-loader" class="dialog-loader"><div class="spinner"></div><span>Rendering High-Res Page Preview...</span></div>
         <img id="modal-img" src="" alt="PDF Page Preview" onload="document.getElementById('modal-loader').style.display='none'">
       </div>
     </div>

@@ -17,13 +17,13 @@ function highlightSearch(text, query) {
 function evidence(f, query) {
   const ev = f.evidence;
   return `
-    <div class="evidence-box">
+    <div class="ev-card">
       <div>
-        <div class="evidence-doc-name">${escape(ev.document_name)}</div>
-        <div class="evidence-meta">Page ${ev.page} · ${escape(f.kind)}${f.value ? ` · ${escape(f.value)}` : ''}${f.period ? ` · ${escape(f.period)}` : ''}</div>
-        <div class="evidence-text">“${highlightSearch(ev.excerpt, query)}”</div>
+        <div class="ev-doc">${escape(ev.document_name)}</div>
+        <div class="ev-meta">Page ${ev.page} · ${escape(f.kind)}${f.value ? ` · ${escape(f.value)}` : ''}${f.period ? ` · ${escape(f.period)}` : ''}</div>
+        <div class="ev-text">“${highlightSearch(ev.excerpt, query)}”</div>
       </div>
-      <button class="btn-preview" onclick="openPreview('${escape(ev.document_id)}', ${ev.page}, '${escape(ev.document_name)}')">
+      <button class="btn-page-preview" onclick="openPreview('${escape(ev.document_id)}', ${ev.page}, '${escape(ev.document_name)}')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         Preview Page ${ev.page}
       </button>
@@ -39,9 +39,9 @@ function renderMetrics() {
     ['Watchlist', data.diagnostics.length]
   ];
   $('#metrics').innerHTML = metrics.map(([label, count]) => `
-    <div class="metric-card">
-      <div class="metric-number">${count}</div>
-      <div class="metric-label">${label}</div>
+    <div class="metric-box">
+      <div class="metric-val">${count}</div>
+      <div class="metric-lbl">${label}</div>
     </div>
   `).join('');
 }
@@ -86,9 +86,9 @@ function render() {
   
   if (!filteredRelations.length) {
     container.innerHTML = `
-      <div class="empty-state">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px; color:var(--ink-muted);"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <p>No relationship cards match the selected filter or search term.</p>
+      <div class="empty-state-box">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px; color:var(--text-muted);"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <p>No relationship cards match the selected filter or search query.</p>
       </div>
     `;
     return;
@@ -101,53 +101,53 @@ function render() {
     const confidencePct = Math.round(r.confidence * 100);
 
     return `
-      <article class="relation-card ${isRejected ? 'rejected' : ''} ${isApproved ? 'approved' : ''}" id="card-${escape(r.id)}">
-        <div class="relation-header">
-          <span class="badge-pill ${r.type}">${r.type}</span>
-          <div class="signal-meter">
-            <div class="signal-bar-track">
-              <div class="signal-bar-fill" style="width: ${confidencePct}%;"></div>
+      <article class="rel-card ${isRejected ? 'rejected' : ''} ${isApproved ? 'approved' : ''}" id="card-${escape(r.id)}">
+        <div class="card-top">
+          <span class="pill-badge ${r.type}">${r.type}</span>
+          <div class="signal-wrap">
+            <div class="signal-track">
+              <div class="signal-fill" style="width: ${confidencePct}%;"></div>
             </div>
-            <span class="signal-label">${confidencePct}% signal</span>
+            <span class="signal-text">${confidencePct}% signal</span>
           </div>
         </div>
 
-        <div class="relation-reason">${escape(r.reason)}</div>
+        <div class="card-reason">${escape(r.reason)}</div>
 
-        <div class="evidence-grid">
+        <div class="ev-grid">
           ${evidence(r.left, query)}
           ${evidence(r.right, query)}
         </div>
 
-        <div class="feedback-bar">
-          <div class="action-buttons">
-            <button class="btn-action-approve ${isApproved ? 'active' : ''}" onclick="sendFeedback('${escape(r.id)}', 'approve')">
+        <div class="card-footer">
+          <div class="footer-btn-group">
+            <button class="btn-approve ${isApproved ? 'active' : ''}" onclick="sendFeedback('${escape(r.id)}', 'approve')">
               ${isApproved ? '✓ Approved' : '✓ Approve'}
             </button>
-            <button class="btn-action-reject ${isRejected ? 'active' : ''}" onclick="sendFeedback('${escape(r.id)}', 'reject')">
+            <button class="btn-reject ${isRejected ? 'active' : ''}" onclick="sendFeedback('${escape(r.id)}', 'reject')">
               ${isRejected ? '✗ Rejected' : '✗ Reject'}
             </button>
-            <select class="select-override" onchange="sendFeedback('${escape(r.id)}', 'override', this.value)">
+            <select class="select-override-type" onchange="sendFeedback('${escape(r.id)}', 'override', this.value)">
               <option value="">-- Override Classification --</option>
               <option value="corroborates" ${r.type === 'corroborates' ? 'selected' : ''}>Corroborates</option>
               <option value="contradicts" ${r.type === 'contradicts' ? 'selected' : ''}>Contradicts</option>
               <option value="reconciles" ${r.type === 'reconciles' ? 'selected' : ''}>Reconciles</option>
             </select>
           </div>
-          ${isApproved ? '<span class="status-badge-tag tag-approved">✓ Approved by Reviewer</span>' : ''}
-          ${isRejected ? '<span class="status-badge-tag tag-rejected">✗ Rejected by Reviewer</span>' : ''}
-          ${isOverridden ? `<span class="status-badge-tag tag-overridden">✎ Overridden to ${escape(r.type.toUpperCase())}</span>` : ''}
+          ${isApproved ? '<span class="reviewer-status-tag tag-approved">✓ Approved by Reviewer</span>' : ''}
+          ${isRejected ? '<span class="reviewer-status-tag tag-rejected">✗ Rejected by Reviewer</span>' : ''}
+          ${isOverridden ? `<span class="reviewer-status-tag tag-overridden">✎ Overridden to ${escape(r.type.toUpperCase())}</span>` : ''}
         </div>
       </article>
     `;
   }).join('');
 
   $('#diagnostics').innerHTML = data.diagnostics.length ? data.diagnostics.map(d => `
-    <div class="diagnostic-item">
+    <div class="diag-card">
       <strong>${escape(d.type.replace('_', ' '))}</strong> — ${escape(d.document)}<br>
       ${escape(d.message)}
     </div>
-  `).join('') : '<div class="empty-state" style="padding:20px;"><p>No extraction failures reported. System operating normally.</p></div>';
+  `).join('') : '<div class="empty-state-box" style="padding:24px;"><p>No extraction failures reported. Engine operating normally.</p></div>';
 }
 
 async function refresh() {
@@ -156,7 +156,7 @@ async function refresh() {
 }
 
 async function sendFeedback(relationId, action, overrideType = null) {
-  $('#status').textContent = 'Saving feedback...';
+  $('#status').textContent = 'Saving feedback decision...';
   const res = await fetch(`/api/relations/${encodeURIComponent(relationId)}/feedback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -233,9 +233,9 @@ $('#upload').onclick = async () => {
   let files = fileInput.files;
   if (!files.length) return $('#status').textContent = 'Please choose or drop at least one PDF file.';
   
-  $('#status').textContent = 'Analyzing documents, extracting facts, and computing relationship matrix...';
+  $('#status').textContent = 'Analyzing documents, parsing tables, and calculating TF-IDF embeddings...';
   $('#progress-bar-container').style.display = 'block';
-  $('#progress-bar').style.width = '40%';
+  $('#progress-bar').style.width = '45%';
   
   let form = new FormData();
   [...files].forEach(f => form.append('files', f));
@@ -255,7 +255,7 @@ $('#upload').onclick = async () => {
       return;
     }
     data = out;
-    $('#status').textContent = `Analyzed ${files.length} document(s) in 1.8 seconds.`;
+    $('#status').textContent = `Analyzed ${files.length} document(s) in 1.8s.`;
     render();
   } catch (err) {
     $('#progress-bar-container').style.display = 'none';
