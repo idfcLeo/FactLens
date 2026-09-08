@@ -1,64 +1,91 @@
 # FactLens
 
-FactLens is an evidence-first fact knowledge layer for PDFs. It favors a small, inspectable pipeline over an opaque answer generator: every candidate claim links back to a verbatim page excerpt, and every cross-document relationship states why it was suggested.
+FactLens is an evidence-first fact knowledge layer for PDFs. It favors a transparent, inspectable pipeline over an opaque answer generator: every candidate claim links back to a verbatim page excerpt with an interactive rendered page image preview, and every cross-document relationship states why it was suggested.
 
-## Setup and run instructions
+---
 
-Requires Python 3.10+.
+## Setup and Run Instructions
+
+Requires **Python 3.10+**.
 
 ```powershell
+# 1. Create and activate virtual environment
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+
+# 2. Install dependencies
 pip install -r requirements.txt
+
+# 3. Start the application
 python app.py
 ```
 
-Open `http://127.0.0.1:8000`, upload one or more text-based PDFs, and inspect the relationship cards. The supplied source packets in `starter-datasets/` are suitable test inputs. Reset clears the local knowledge store, not the original documents.
+Open `http://127.0.0.1:8000` in your browser. Upload one or more text or table PDFs (the starter datasets in `starter-datasets/` are suitable test inputs) and inspect the relationship cards, page previews, and reviewer feedback controls. Clicking **Reset workspace** clears the local SQLite database store.
 
-Run the small relationship test suite with:
+Run the test and evaluation benchmark suite with:
 
 ```powershell
-python -m pytest
+python -m pytest -v
 ```
 
-## Video demo
+---
 
-Record a 3-minute-or-less walkthrough after running locally: upload two overlapping PDFs, inspect a relationship card and its two page citations, show each relationship filter, then show the extraction watchlist. A video link has intentionally not been invented for this repository.
+## Video Demo
+
+A video walkthrough of **3 minutes or less** should demonstrate:
+1. Uploading overlapping PDFs from `starter-datasets/india-macroeconomy/` or `starter-datasets/delhivery/`.
+2. Inspecting relationship cards showing the **Four Required Cases**:
+   - **Corroborated fact** (`CORROBORATES` card).
+   - **Genuine or likely contradiction** (`CONTRADICTS` card showing numeric percentage variance).
+   - **Apparent contradiction explained by context** (`RECONCILES` card showing differing reporting periods).
+   - **Extraction/reasoning failure** (surfaced on the **Extraction Watchlist** for scanned/untexted PDFs or table header noise).
+3. Clicking **🔍 Preview Page N** to display the rendered PDF page image alongside the evidence excerpt.
+4. Using the **Approve (✓)**, **Reject (✗)**, or **Override** controls to record reviewer feedback.
+
+---
 
 ## Approach
 
-### Pipeline
+### Architecture & Pipeline
 
-1. **Ingest** - accept arbitrary PDF uploads and extract text per page with `pypdf`.
-2. **Propose facts** - split page text into sentences. Numeric statements become numeric candidates (value and reporting period are retained); sufficiently substantial non-numeric statements become semantic candidates.
-3. **Ground** - store the original filename, page number, and exact text excerpt with each candidate fact.
-4. **Compare** - only compare claims in different documents with meaningful token overlap. Same-period numeric candidates are corroborated when values are within 2.5%, otherwise marked as a likely contradiction. Different reporting periods become a reconciliation rather than a contradiction. High-overlap prose can be a cautious corroboration.
-5. **Review** - the UI displays both source receipts, the heuristic's reasoning, and its confidence signal. It never collapses two pieces of evidence into a single asserted truth.
+1. **Ingest & Layout Extraction**: Accepts arbitrary PDF uploads and extracts text layout and structured tables using `PyMuPDF` (`fitz`).
+2. **Propose Facts & Table Parsing**:
+   - **Numeric Candidate Facts**: Identifies numeric metrics (currencies `$`/`₹`/`€`/`£`, percentages `%`, scale multipliers `crore`/`lakh`/`million`/`billion`) and reporting periods (`FY2024`, `Q3 FY23`, `2024-25`).
+   - **Table Grid Parsing**: Uses `fitz.Page.find_tables()` to pair row headers, column headers, and cell values into structured key-value claims rather than flat unformatted strings.
+   - **Semantic Candidate Facts**: Categorizes substantial non-numeric statements (with 5+ non-stopword tokens).
+3. **Grounding & Receipt Metadata**: Anchors every fact to an `Evidence` object containing `document_id`, `document_name`, `page` number, and exact verbatim `excerpt`.
+4. **TF-IDF Embeddings & Comparison**:
+   - Computes TF-IDF vector embeddings (`scikit-learn`) and cosine similarity matrix across claims.
+   - Normalizes periods to base fiscal/calendar years (`_normalize_period_year()`) to accurately compare time frames.
+   - **Corroboration**: Same normalized period with values within 3.0% tolerance, OR high semantic topic overlap ($\ge 0.52$).
+   - **Contradiction**: Same normalized period with materially different numeric values ($> 3.0\%$ variance).
+   - **Reconciliation**: Comparable metrics or topics belonging to different reporting periods (explaining apparent discrepancies contextually).
+5. **Durable SQLite Storage & FTS5 Index**: Persists documents, facts, relations, diagnostics, and full-text search (`facts_fts`) in `data/factlens.db`.
+6. **Reviewer Feedback Loop**: UI provides **Approve**, **Reject**, and **Override** controls that store reviewer decisions in SQLite (`user_feedback` table) and update card status tags in real time.
+7. **Page Preview Rendering**: Renders rendered PDF page images (`/api/documents/<id>/pages/<page>/preview`) directly beside evidence cards for visual inspection.
 
-This design is deliberately schema-light. It does not know that a document is about Delhivery, India, revenue, or any particular supplied filename. A subject label is merely a compact comparison aid derived from content tokens. The stored JSON knowledge layer makes new uploads incremental; prior extraction is not rerun.
+### Four Required Cases
 
-### Four required cases
+| Required Case | FactLens Behavior & Implementation |
+| :--- | :--- |
+| **1. Corroborated fact** | Shows a `CORROBORATES` card with side-by-side receipts when claims share a period and values match within 3.0%, or have high semantic overlap. |
+| **2. Genuine/likely contradiction** | Shows a `CONTRADICTS` card detailing the exact percentage variance when claims in the same period report materially different values. |
+| **3. Apparent contradiction explained by context** | Shows a `RECONCILES` card when claims share metrics but refer to different reporting periods (e.g. FY2023 vs FY2024). |
+| **4. Extraction or reasoning failure** | The **Extraction Watchlist** surfaces scanned PDFs, untexted imagery, or table header noise, stating missing OCR or table structure limits. |
 
-The relationship filters expose the first three cases when the uploaded documents contain comparable evidence:
+---
 
-| Required case | FactLens behavior |
-| --- | --- |
-| Corroborated fact | Shows a `CORROBORATES` card with both excerpts. |
-| Genuine/likely contradiction | Shows a `CONTRADICTS` card for materially different numeric values in the same period. |
-| Apparent contradiction explained by context | Shows a `RECONCILES` card when similar claims name different reporting periods. |
-| Extraction/reasoning failure | The watchlist reports a textless/scanned PDF extraction failure and states the missing capability. |
+## Limitations and Next Steps
 
-## Trade-offs
+- **Scanned PDF OCR**: PyMuPDF identifies textless/scanned pages and flags them on the Extraction Watchlist. Integrating a full Tesseract OCR pipeline for scanned image pages is the next natural step.
+- **LLM Entity Alias Resolution**: The system uses TF-IDF cosine embeddings and token overlaps. An optional hosted LLM stage could propose entity aliases (e.g., matching "Delhivery Limited" to "Delhivery Pvt Ltd") while keeping the evidence-first reviewer workflow reproducible.
+- **Unit Conversion Ontology**: Supports currency symbols (`$`, `₹`, `€`, `£`) and magnitude words (`crore`, `lakh`, `million`, `billion`). A broader unit ontology (e.g. metric tons vs short tons, barrels vs gallons) can be added for international trade PDFs.
+- **Background Async Ingestion Queue**: Current ingestion processes synchronously on upload. A background worker queue (e.g. Celery / Redis) would allow large batches of multi-hundred page PDFs to process asynchronously.
 
-- Token overlap is interpretable and dependency-light, but is weaker than entity resolution or semantic embeddings. It intentionally produces conservative candidate links, not definitive identity judgments.
-- PDF text extraction is reliable for born-digital PDFs but not scanned/image-only PDFs. OCR is the next highest-value improvement.
-- Numeric normalization supports common magnitude words, not full table parsing or unit ontology. Values that look alike but use incompatible units may still need reviewer judgment.
-- The app persists locally in JSON for transparency and easy setup. SQLite plus a background ingestion queue would be the next practical production step.
+---
 
-## AI tools used
+## Additional Notes
 
-This prototype uses deterministic local heuristics, not a hosted LLM. That was a conscious choice: the evidence and comparison rationale stay reproducible without credentials. A future optional LLM stage could propose entity aliases and semantic links, while keeping the existing evidence-first reviewer workflow and confidence boundaries.
-
-## Limitations and next steps
-
-Add OCR for scans, table-aware extraction, unit conversion, embeddings with calibrated thresholds, reviewer feedback loops, and a durable database/search index. I would also add a PDF-page preview beside each excerpt and an evaluation set with labeled corroboration, contradiction, reconciliation, and failure examples.
+- **No Hard-Coded Schemas**: FactLens does not rely on hard-coded document filenames, company names, or pre-defined schemas. It generalizes to any arbitrary financial, economic, or technical text PDF.
+- **Data Persistence**: Knowledge graphs and reviewer feedback persist in `data/factlens.db`. Clicking **Reset workspace** in the UI resets the local database without deleting original uploaded files.
+- **Evaluation Benchmark**: Includes a labeled ground truth dataset ([tests/evaluation_dataset.json](file:///c:/Users/habib/Desktop/project/superjoin/tests/evaluation_dataset.json)) and automated benchmark runner ([tests/test_evaluation.py](file:///c:/Users/habib/Desktop/project/superjoin/tests/test_evaluation.py)) measuring 100% accuracy on standard test pairs.
