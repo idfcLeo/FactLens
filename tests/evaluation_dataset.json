@@ -1,0 +1,102 @@
+[
+  {
+    "id": "eval_1",
+    "description": "Corroborated fact with minor wording differences in same reporting period",
+    "left": {
+      "id": "docA:1:1:n",
+      "claim": "Revenue reached $150 million in FY2024.",
+      "kind": "numeric",
+      "value": "$150 million",
+      "period": "FY2024",
+      "subject": "revenue reached million",
+      "confidence": 0.85,
+      "evidence": { "document_id": "docA", "document_name": "docA.pdf", "page": 1, "excerpt": "Revenue reached $150 million in FY2024." }
+    },
+    "right": {
+      "id": "docB:2:1:n",
+      "claim": "Total company revenue was reported at $150 mn in FY2024.",
+      "kind": "numeric",
+      "value": "$150 mn",
+      "period": "FY2024",
+      "subject": "total company revenue reported",
+      "confidence": 0.85,
+      "evidence": { "document_id": "docB", "document_name": "docB.pdf", "page": 2, "excerpt": "Total company revenue was reported at $150 mn in FY2024." }
+    },
+    "expected_relation": "corroborates"
+  },
+  {
+    "id": "eval_2",
+    "description": "Contradiction: materially different values reported in the same period",
+    "left": {
+      "id": "docA:3:1:n",
+      "claim": "Net profit margin stood at 18.5% for FY2024.",
+      "kind": "numeric",
+      "value": "18.5%",
+      "period": "FY2024",
+      "subject": "net profit margin stood",
+      "confidence": 0.85,
+      "evidence": { "document_id": "docA", "document_name": "docA.pdf", "page": 3, "excerpt": "Net profit margin stood at 18.5% for FY2024." }
+    },
+    "right": {
+      "id": "docB:4:1:n",
+      "claim": "Net profit margin was 12.0% for FY2024.",
+      "kind": "numeric",
+      "value": "12.0%",
+      "period": "FY2024",
+      "subject": "net profit margin",
+      "confidence": 0.85,
+      "evidence": { "document_id": "docB", "document_name": "docB.pdf", "page": 4, "excerpt": "Net profit margin was 12.0% for FY2024." }
+    },
+    "expected_relation": "contradicts"
+  },
+  {
+    "id": "eval_3",
+    "description": "Reconciliation: valid metric comparison across different reporting periods",
+    "left": {
+      "id": "docA:5:1:n",
+      "claim": "India GDP growth rate was projected at 6.8% for FY2024.",
+      "kind": "numeric",
+      "value": "6.8%",
+      "period": "FY2024",
+      "subject": "india gdp growth rate projected",
+      "confidence": 0.85,
+      "evidence": { "document_id": "docA", "document_name": "docA.pdf", "page": 5, "excerpt": "India GDP growth rate was projected at 6.8% for FY2024." }
+    },
+    "right": {
+      "id": "docB:6:1:n",
+      "claim": "India GDP growth rate was projected at 7.2% for FY2025.",
+      "kind": "numeric",
+      "value": "7.2%",
+      "period": "FY2025",
+      "subject": "india gdp growth rate projected",
+      "confidence": 0.85,
+      "evidence": { "document_id": "docB", "document_name": "docB.pdf", "page": 6, "excerpt": "India GDP growth rate was projected at 7.2% for FY2025." }
+    },
+    "expected_relation": "reconciles"
+  },
+  {
+    "id": "eval_4",
+    "description": "Footnote vs forecast false positive prevention (Unrelated claims must NOT reconcile)",
+    "left": {
+      "id": "docA:40:1:n",
+      "claim": "0.0 Dec-2014 Dec-2019 Dec-2024",
+      "kind": "numeric",
+      "value": "0.0",
+      "period": "2014",
+      "subject": "unclassified statement",
+      "confidence": 0.70,
+      "evidence": { "document_id": "docA", "document_name": "docA.pdf", "page": 40, "excerpt": "0.0 Dec-2014 Dec-2019 Dec-2024" }
+    },
+    "right": {
+      "id": "docB:11:1:n",
+      "claim": "3 Dec 2021 Dec 2023 Dec 2024",
+      "kind": "numeric",
+      "value": "3",
+      "period": "2021",
+      "subject": "unclassified statement",
+      "confidence": 0.70,
+      "evidence": { "document_id": "docB", "document_name": "docB.pdf", "page": 11, "excerpt": "3 Dec 2021 Dec 2023 Dec 2024" }
+    },
+    "expected_relation": null
+  }
+]

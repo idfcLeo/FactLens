@@ -1,17 +1,77 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FactLens</title><link rel="stylesheet" href="/static/app.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FactLens - Evidence-first Knowledge Layer</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
 <body>
-  <header><div><span class="eyebrow">Evidence-first knowledge layer</span><h1>FactLens</h1></div><button class="quiet" id="reset">Reset workspace</button></header>
+  <header>
+    <div>
+      <span class="eyebrow">Evidence-first knowledge layer</span>
+      <h1>FactLens</h1>
+    </div>
+    <button class="quiet" id="reset">Reset workspace</button>
+  </header>
+
   <main>
-    <section class="hero"><p class="kicker">TURN SCATTERED PDFS INTO REVIEWABLE KNOWLEDGE</p><h2>Every claim keeps its receipt.</h2><p>Upload independent PDFs. FactLens extracts candidate facts, retains the page-level source excerpt, and compares related evidence without silently merging it.</p></section>
-    <section class="upload" id="drop"><input id="files" type="file" accept="application/pdf" multiple><div><strong>Drop PDFs here</strong><span>or choose files - text PDFs up to 30 MB each</span></div><button id="upload">Analyze PDFs</button></section>
+    <section class="hero">
+      <p class="kicker">TURN SCATTERED PDFS INTO REVIEWABLE KNOWLEDGE</p>
+      <h2>Every claim keeps its receipt.</h2>
+      <p>Upload independent PDFs. FactLens extracts candidate facts, retains page-level source receipts, and compares related evidence with TF-IDF embeddings and unit normalization.</p>
+    </section>
+
+    <section class="upload" id="drop">
+      <input id="files" type="file" accept="application/pdf" multiple>
+      <div>
+        <strong>Drop PDFs here</strong>
+        <span>or choose files - text & table PDFs up to 35 MB each</span>
+      </div>
+      <button id="upload">Analyze PDFs</button>
+    </section>
+
     <p id="status" aria-live="polite"></p>
+
     <section class="metrics" id="metrics"></section>
-    <section class="filters"><button class="active" data-filter="all">All relationships</button><button data-filter="corroborates">Corroborated</button><button data-filter="contradicts">Contradictions</button><button data-filter="reconciles">Explained by context</button></section>
-    <section><div class="section-title"><h3>Relationship review</h3><span>Claims are candidates, not truth.</span></div><div id="relations" class="relations"></div></section>
-    <section><div class="section-title"><h3>Extraction watchlist</h3><span>Known failures and uncertainty are visible.</span></div><div id="diagnostics"></div></section>
+
+    <section class="filters">
+      <button class="active" data-filter="all">All relationships</button>
+      <button data-filter="corroborates">Corroborated</button>
+      <button data-filter="contradicts">Contradictions</button>
+      <button data-filter="reconciles">Explained by context</button>
+    </section>
+
+    <section>
+      <div class="section-title">
+        <h3>Relationship review & Feedback</h3>
+        <span>Review, approve, or reject candidate evidence links.</span>
+      </div>
+      <div id="relations" class="relations"></div>
+    </section>
+
+    <section>
+      <div class="section-title">
+        <h3>Extraction watchlist</h3>
+        <span>Known failures, scanned PDFs, and uncertainties are visible.</span>
+      </div>
+      <div id="diagnostics"></div>
+    </section>
   </main>
-  <template id="relation"><article class="relation"><div class="relation-head"><span class="badge"></span><span class="confidence"></span></div><p class="reason"></p><div class="evidence-grid"></div></article></template>
+
+  <!-- PDF Page Image Preview Modal -->
+  <dialog id="preview-modal" class="preview-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 id="modal-title">PDF Page Preview</h4>
+        <button id="modal-close" class="quiet">&times;</button>
+      </div>
+      <div class="modal-body">
+        <img id="modal-img" src="" alt="PDF Page Preview">
+      </div>
+    </div>
+  </dialog>
+
   <script src="/static/app.js"></script>
-</body></html>
+</body>
+</html>
