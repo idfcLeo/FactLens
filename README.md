@@ -32,15 +32,19 @@ python -m pytest -v
 
 ## Video Demo
 
-A video walkthrough of **3 minutes or less** should demonstrate:
-1. Uploading overlapping PDFs from `starter-datasets/india-macroeconomy/` or `starter-datasets/delhivery/`.
+Watch the video walkthrough: **[FactLens Demo Walkthrough Video](https://www.youtube.com/watch?v=uBY-_7sQAQ4)**
+
+[![FactLens Demo Video](https://img.youtube.com/vi/uBY-_7sQAQ4/0.jpg)](https://www.youtube.com/watch?v=uBY-_7sQAQ4)
+
+The video walkthrough demonstrates:
+1. Uploading overlapping PDFs from `starter-datasets/india-macroeconomy/` and `starter-datasets/delhivery/`.
 2. Inspecting relationship cards showing the **Four Required Cases**:
    - **Corroborated fact** (`CORROBORATES` card).
    - **Genuine or likely contradiction** (`CONTRADICTS` card showing numeric percentage variance).
    - **Apparent contradiction explained by context** (`RECONCILES` card showing differing reporting periods).
    - **Extraction/reasoning failure** (surfaced on the **Extraction Watchlist** for scanned/untexted PDFs or table header noise).
 3. Clicking **🔍 Preview Page N** to display the rendered PDF page image alongside the evidence excerpt.
-4. Using the **Approve (✓)**, **Reject (✗)**, or **Override** controls to record reviewer feedback.
+4. Using the **Approve (✓)**, **Reject (✗)**, or **Override** controls to record reviewer feedback in SQLite.
 
 ---
 
