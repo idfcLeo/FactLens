@@ -10,14 +10,15 @@ import fitz  # PyMuPDF
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-NUMBER = re.compile(r"(?<![\w.])(?:₹|\$|€|£)?\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?(?:%|percent|crore|million|billion|bn|mn|lakh)?", re.I)
-YEAR = re.compile(r"\b(?:FY\s?)?20\d{2}(?:[-–]\d{2,4})?\b|\bQ[1-4]\s*(?:FY\s*)?\d{2,4}\b", re.I)
+# Match numeric values (allow unformatted multi-digit integers without truncating to 3 digits)
+NUMBER = re.compile(r"(?<![\w.])(?:₹|\$|€|£)?\s?\d+(?:,\d{3})*(?:\.\d+)?\s?(?:%|percent|crore|million|billion|bn|mn|lakh)?\b", re.I)
+YEAR = re.compile(r"\b(?:FY\s?)?20\d{2}(?:[-–/]\d{2,4})?\b|\bQ[1-4]\s*(?:FY\s*)?\d{2,4}\b", re.I)
 SENTENCE = re.compile(r"(?<=[.!?])\s+|\n{2,}")
 MONTHS = {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
           "january", "february", "march", "april", "june", "july", "august", "september", "october", "november", "december"}
 STOP = frozenset(
     "the a an and or of in on at to for from with by is are was were be been this that as it its their our which into than "
-    "report financial during page figure table view overview source".split()
+    "report financial during page figure table view overview source total value statement".split()
 ) | MONTHS
 
 
@@ -57,7 +58,7 @@ def _tokens(text: str) -> set[str]:
 
 
 def _subject(sentence: str) -> str:
-    words = [w for w in _tokens(sentence) if w not in {"report", "financial", "during", "statement"}]
+    words = [w for w in _tokens(sentence) if w not in {"report", "financial", "during", "statement", "table", "column", "row"}]
     return " ".join(words[:6]) or "unclassified statement"
 
 
@@ -96,10 +97,13 @@ def _normalized_number(value: Optional[str]) -> Optional[float]:
 
 def _meaningful_number(match: re.Match[str], sentence: str) -> bool:
     value = _clean(match.group(0))
-    if re.fullmatch(r"20\d{2}", value):
+    # Ignore standalone 4-digit years like 2024 or 2021-22
+    if re.fullmatch(r"20\d{2}", value) or re.fullmatch(r"20\d{2}[-/]\d{2,4}", value):
         return False
+    # Ignore day numbers in date strings e.g. "Dec 2021"
     if re.search(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+" + re.escape(value), sentence, re.I):
         return False
+    # Ignore footnote numbers at start of text line e.g. "41 World Economic Outlook"
     if match.start() == 0 and re.match(r"^\d{1,2}\s+[A-Z]", sentence):
         return False
     return True
@@ -151,17 +155,25 @@ def _table_facts(document_id: str, name: str, page: int, doc: fitz.Document, pag
             headers = [str(cell or "").strip() for cell in df[0]]
             for row_idx, row in enumerate(df[1:], start=1):
                 row_cells = [str(cell or "").strip() for cell in row]
-                row_label = row_cells[0] if row_cells else ""
+                row_label = _clean(row_cells[0]) if row_cells else ""
+                # Skip rows with no text label or row labels that lack real text tokens
+                if not row_label or not _tokens(row_label):
+                    continue
                 for col_idx, cell_val in enumerate(row_cells[1:], start=1):
-                    col_header = headers[col_idx] if col_idx < len(headers) else ""
+                    col_header = _clean(headers[col_idx]) if col_idx < len(headers) else ""
+                    cell_val = _clean(cell_val)
                     if not cell_val or len(cell_val) < 2:
                         continue
-                    num_match = NUMBER.search(cell_val)
-                    if num_match:
-                        claim_text = _clean(f"Table row '{row_label}' under column '{col_header}': {cell_val}")
+                    # Skip cells that are just date headers e.g. 2021, 2021/22
+                    if re.fullmatch(r"(?:FY\s*)?20\d{2}(?:[-/]\d{2,4})?", cell_val, re.I):
+                        continue
+                    matches = [m for m in NUMBER.finditer(cell_val) if _meaningful_number(m, cell_val)]
+                    if matches:
+                        match = _best_numeric_match(matches)
+                        val_str = _clean(match.group(0))
+                        claim_text = _clean(f"{row_label} ({col_header}): {cell_val}") if col_header else _clean(f"{row_label}: {cell_val}")
                         period_match = YEAR.search(col_header) or YEAR.search(row_label) or YEAR.search(claim_text)
                         period = period_match.group(0) if period_match else None
-                        val_str = _clean(num_match.group(0))
                         evidence = Evidence(document_id, name, page, claim_text)
                         facts.append(Fact(
                             id=f"{document_id}:{page}:t{tab_idx}r{row_idx}c{col_idx}:n",
@@ -229,8 +241,8 @@ def relate(facts: list[Fact]) -> list[dict]:
             same_period = left.period and right.period and left.period == right.period
             ln, rn = left.normalized_value, right.normalized_value
 
-            # Same period numeric evaluation allows lower cutoff if subject or key metric overlaps
-            if ln is not None and rn is not None and same_period and (sim_score >= 0.20 or bool(_tokens(left.claim) & _tokens(right.claim))):
+            # Same period numeric evaluation: requires shared tokens and reasonable similarity
+            if ln is not None and rn is not None and same_period and (sim_score >= 0.25 or bool(_tokens(left.claim) & _tokens(right.claim))):
                 mult = 1.0
                 if left.currency == "USD" and right.currency == "INR":
                     mult = 83.0
@@ -244,15 +256,15 @@ def relate(facts: list[Fact]) -> list[dict]:
                 reason = "Same period and similar claim language; values are " + ("within 3.0%." if close else f"materially different ({diff_pct:.1%} variance).")
                 confidence = round(min(0.95, 0.50 + sim_score * 0.45), 2)
 
-            elif sim_score < 0.28:
+            elif sim_score < 0.32:
                 continue
             
-            elif left.period and right.period and left.period != right.period and (sim_score >= 0.40 or left.subject == right.subject):
+            elif left.period and right.period and left.period != right.period and (sim_score >= 0.45 or (left.subject == right.subject and left.subject != "unclassified statement")):
                 relation = "reconciles"
                 reason = f"The evidence refers to different reporting periods ({left.period} vs {right.period}), so the apparent variation is contextual."
                 confidence = round(min(0.90, 0.40 + sim_score * 0.50), 2)
 
-            elif sim_score >= 0.55:
+            elif sim_score >= 0.58:
                 relation = "corroborates"
                 reason = "Different wording has substantial semantic topic overlap; review the linked receipts to verify identity."
                 confidence = round(min(0.90, 0.35 + sim_score * 0.55), 2)
@@ -269,13 +281,26 @@ def relate(facts: list[Fact]) -> list[dict]:
                 "right": right.json()
             })
 
+    # Strict deduplication: collapse redundant comparisons for the same document pair, relation type, subject, period, and value
     grouped: dict[tuple, dict] = {}
     for relation in relations:
-        l_ev, r_ev = relation["left"]["evidence"], relation["right"]["evidence"]
-        pair = tuple(sorted(((l_ev["document_id"], l_ev["page"], l_ev["excerpt"]),
-                             (r_ev["document_id"], r_ev["page"], r_ev["excerpt"]))))
-        key = (relation["type"], pair)
-        if key not in grouped or relation["confidence"] > grouped[key]["confidence"]:
-            grouped[key] = relation
+        left_f = relation["left"]
+        right_f = relation["right"]
+        l_doc = left_f["evidence"]["document_id"]
+        r_doc = right_f["evidence"]["document_id"]
+        
+        subj_key = left_f.get("subject") if left_f.get("subject") != "unclassified statement" else right_f.get("subject")
+        val_key = left_f.get("normalized_value") or left_f.get("value")
+        period_key = left_f.get("period") or right_f.get("period")
+        
+        pair_key = (
+            relation["type"],
+            tuple(sorted([l_doc, r_doc])),
+            period_key,
+            val_key,
+            subj_key
+        )
+        if pair_key not in grouped or relation["confidence"] > grouped[pair_key]["confidence"]:
+            grouped[pair_key] = relation
 
     return sorted(grouped.values(), key=lambda x: x["confidence"], reverse=True)[:100]
