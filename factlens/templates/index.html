@@ -46,7 +46,7 @@
 
     <!-- Upload Dropzone Container -->
     <section class="upload-zone" id="drop">
-      <input id="files" type="file" accept="application/pdf" multiple>
+      <input id="files" type="file" accept="application/pdf" multiple style="display:none;">
       <div class="upload-zone-body">
         <div class="upload-icon-wrapper">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
@@ -55,7 +55,7 @@
           <strong>Drop PDFs here or click to browse</strong>
           <span>Supports text reports, tables, and financial statements (up to 35 MB each)</span>
         </div>
-        <button class="btn-upload" id="upload">
+        <button class="btn-upload" id="upload" type="button">
           <span>Analyze PDFs</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
         </button>

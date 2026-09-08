@@ -2,6 +2,7 @@ const $ = s => document.querySelector(s);
 let data = { relations: [], documents: [], facts: [], diagnostics: [] };
 let currentFilter = 'all';
 let searchQuery = '';
+let selectedFiles = [];
 
 function escape(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
@@ -204,9 +205,29 @@ document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => {
   render();
 });
 
-// Drag & Drop Handling
+// File Selection & Drag-and-Drop Handling
 const dropArea = $('#drop');
 const fileInput = $('#files');
+
+function updateFilePreview(files) {
+  selectedFiles = files;
+  if (selectedFiles.length) {
+    $('#file-list-preview').innerHTML = selectedFiles.map(f => `<span class="file-chip">📄 ${escape(f.name)} (${(f.size/1024/1024).toFixed(1)} MB)</span>`).join('');
+    $('#status').textContent = `${selectedFiles.length} file(s) selected. Click "Analyze PDFs" to begin.`;
+  } else {
+    $('#file-list-preview').innerHTML = '';
+  }
+}
+
+// Clicking dropzone opens file dialog
+dropArea.onclick = (e) => {
+  if (e.target.closest('#upload')) return; // Do not trigger browse if clicking Analyze button
+  fileInput.click();
+};
+
+fileInput.onchange = () => {
+  updateFilePreview([...fileInput.files]);
+};
 
 ['dragenter', 'dragover'].forEach(eventName => {
   dropArea.addEventListener(eventName, (e) => {
@@ -222,23 +243,31 @@ const fileInput = $('#files');
   }, false);
 });
 
-fileInput.onchange = () => {
-  const files = [...fileInput.files];
-  if (files.length) {
-    $('#file-list-preview').innerHTML = files.map(f => `<span class="file-chip">📄 ${escape(f.name)} (${(f.size/1024/1024).toFixed(1)} MB)</span>`).join('');
+dropArea.addEventListener('drop', (e) => {
+  if (e.dataTransfer.files && e.dataTransfer.files.length) {
+    updateFilePreview([...e.dataTransfer.files]);
   }
-};
+}, false);
 
-$('#upload').onclick = async () => {
-  let files = fileInput.files;
-  if (!files.length) return $('#status').textContent = 'Please choose or drop at least one PDF file.';
+// Analyze PDFs Button Trigger
+$('#upload').onclick = async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (!selectedFiles.length && fileInput.files.length) {
+    selectedFiles = [...fileInput.files];
+  }
+
+  if (!selectedFiles.length) {
+    return $('#status').textContent = 'Please choose or drop at least one PDF file first.';
+  }
   
   $('#status').textContent = 'Analyzing documents, parsing tables, and calculating TF-IDF embeddings...';
   $('#progress-bar-container').style.display = 'block';
   $('#progress-bar').style.width = '45%';
   
   let form = new FormData();
-  [...files].forEach(f => form.append('files', f));
+  selectedFiles.forEach(f => form.append('files', f));
   
   try {
     let r = await fetch('/api/documents', { method: 'POST', body: form });
@@ -251,11 +280,11 @@ $('#upload').onclick = async () => {
     }, 500);
 
     if (!r.ok) {
-      $('#status').textContent = out.error;
+      $('#status').textContent = out.error || 'Upload error';
       return;
     }
     data = out;
-    $('#status').textContent = `Analyzed ${files.length} document(s) in 1.8s.`;
+    $('#status').textContent = `Successfully analyzed ${selectedFiles.length} document(s).`;
     render();
   } catch (err) {
     $('#progress-bar-container').style.display = 'none';
@@ -265,6 +294,8 @@ $('#upload').onclick = async () => {
 
 $('#reset').onclick = async () => {
   await fetch('/api/reset', { method: 'POST' });
+  selectedFiles = [];
+  fileInput.value = '';
   await refresh();
   $('#status').textContent = 'Workspace reset successfully.';
   $('#file-list-preview').innerHTML = '';
