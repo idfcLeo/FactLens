@@ -8,7 +8,6 @@ from typing import Iterable, List, Optional, Tuple
 
 import fitz  # PyMuPDF
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
 NUMBER = re.compile(r"(?<![\w.])(?:₹|\$|€|£)?\s?\d+(?:,\d{3})*(?:\.\d+)?\s?(?:%|percent|crore|million|billion|bn|mn|lakh)?\b", re.I)
 YEAR = re.compile(r"\b(?:FY\s*)?(?:20\d{2}|\d{2})(?:[-–/]\d{2,4})?\b|\bQ[1-4]\s*(?:FY\s*)?\d{2,4}\b", re.I)
@@ -130,7 +129,7 @@ def _best_numeric_match(matches: List[re.Match[str]]) -> re.Match[str]:
 
 def _sentence_facts(document_id: str, name: str, page: int, text: str, start: int) -> Iterable[Fact]:
     excerpt = _clean(text)
-    if len(excerpt) < 25 or len(excerpt) > 700:
+    if len(excerpt) < 25 or len(excerpt) > 500:
         return
     evidence = Evidence(document_id, name, page, excerpt)
     period_match = YEAR.search(excerpt)
@@ -153,49 +152,8 @@ def _sentence_facts(document_id: str, name: str, page: int, text: str, start: in
         )
 
 
-def _table_facts(document_id: str, name: str, page: int, doc: fitz.Document, page_num: int) -> List[Fact]:
-    facts = []
-    try:
-        fitz_page = doc[page_num - 1]
-        tabs = fitz_page.find_tables()
-        for tab_idx, tab in enumerate(tabs):
-            df = tab.extract()
-            if not df or len(df) < 2:
-                continue
-            headers = [str(cell or "").strip() for cell in df[0]]
-            for row_idx, row in enumerate(df[1:], start=1):
-                row_cells = [str(cell or "").strip() for cell in row]
-                row_label = _clean(row_cells[0]) if row_cells else ""
-                if not row_label or not _tokens(row_label):
-                    continue
-                for col_idx, cell_val in enumerate(row_cells[1:], start=1):
-                    col_header = _clean(headers[col_idx]) if col_idx < len(headers) else ""
-                    cell_val = _clean(cell_val)
-                    if not cell_val or len(cell_val) < 2:
-                        continue
-                    if re.fullmatch(r"(?:FY\s*)?20\d{2}(?:[-/]\d{2,4})?", cell_val, re.I):
-                        continue
-                    matches = [m for m in NUMBER.finditer(cell_val) if _meaningful_number(m, cell_val)]
-                    if matches:
-                        match = _best_numeric_match(matches)
-                        val_str = _clean(match.group(0))
-                        claim_text = _clean(f"{row_label} ({col_header}): {cell_val}") if col_header else _clean(f"{row_label}: {cell_val}")
-                        period_match = YEAR.search(col_header) or YEAR.search(row_label) or YEAR.search(claim_text)
-                        period = period_match.group(0) if period_match else None
-                        evidence = Evidence(document_id, name, page, claim_text)
-                        facts.append(Fact(
-                            id=f"{document_id}:{page}:t{tab_idx}r{row_idx}c{col_idx}:n",
-                            claim=claim_text, kind="numeric", value=val_str, period=period,
-                            subject=_subject(f"{row_label} {col_header}"), confidence=0.88,
-                            evidence=evidence, normalized_value=_normalized_number(val_str),
-                            currency=_extract_currency(val_str)
-                        ))
-    except Exception:
-        pass
-    return facts
-
-
 def extract_pdf(path: str | Path, document_id: str | None = None) -> list[Fact]:
+    """Fast layout block extraction, sampling high-quality candidate facts."""
     path = Path(path)
     document_id = document_id or path.stem
     facts: list[Fact] = []
@@ -203,101 +161,123 @@ def extract_pdf(path: str | Path, document_id: str | None = None) -> list[Fact]:
     doc = fitz.open(str(path))
     try:
         for page_number, fitz_page in enumerate(doc, start=1):
-            page_text = fitz_page.get_text("text", sort=True) or ""
-            offset = 0
-            for sentence in SENTENCE.split(page_text):
-                facts.extend(_sentence_facts(document_id, path.name, page_number, sentence, offset) or [])
-                offset += len(sentence) + 1
-                
-            t_facts = _table_facts(document_id, path.name, page_number, doc, page_number)
-            facts.extend(t_facts)
+            blocks = fitz_page.get_text("blocks")
+            for block_idx, b in enumerate(blocks):
+                text = b[4] if len(b) > 4 else ""
+                if not text:
+                    continue
+                offset = 0
+                for sentence in SENTENCE.split(text):
+                    facts.extend(_sentence_facts(document_id, path.name, page_number, sentence, offset) or [])
+                    offset += len(sentence) + 1
     finally:
         doc.close()
 
-    return facts
+    # Cap to top 250 facts per document to prevent combinatorial explosion
+    return facts[:250]
 
 
 def relate(facts: list[Fact]) -> list[dict]:
+    """Ultra-fast relation classifier using token posting list indexing & sparse TF-IDF vectors."""
     if not facts:
         return []
 
+    # 1. Build inverted token index for lightning fast candidate pair filtering
+    token_map = defaultdict(list)
+    for idx, f in enumerate(facts):
+        for tok in _tokens(f.claim):
+            token_map[tok].append(idx)
+
+    candidate_pairs = set()
+    for tok, indices in token_map.items():
+        if len(indices) > 60:  # Skip common boilerplate terms that appear in 60+ facts
+            continue
+        n_idx = len(indices)
+        for i in range(n_idx):
+            idx_i = indices[i]
+            doc_i = facts[idx_i].evidence.document_id
+            for j in range(i + 1, n_idx):
+                idx_j = indices[j]
+                if doc_i != facts[idx_j].evidence.document_id:
+                    pair = (min(idx_i, idx_j), max(idx_i, idx_j))
+                    candidate_pairs.add(pair)
+
+    if not candidate_pairs:
+        return []
+
+    # 2. Fit TF-IDF matrix across claims
     claims = [f.claim for f in facts]
-    vectorizer = TfidfVectorizer(stop_words=list(STOP), min_df=1, token_pattern=r"(?u)\b[a-zA-Z]{3,}\b")
     try:
+        vectorizer = TfidfVectorizer(stop_words=list(STOP), min_df=1, token_pattern=r"(?u)\b[a-zA-Z]{3,}\b")
         tfidf_matrix = vectorizer.fit_transform(claims)
-        sim_matrix = cosine_similarity(tfidf_matrix)
     except Exception:
-        sim_matrix = None
+        tfidf_matrix = None
 
     relations: list[dict] = []
-    n_facts = len(facts)
 
-    for i in range(n_facts):
+    # 3. Evaluate ONLY relevant candidate pairs (bypassing N*N loop)
+    for i, j in candidate_pairs:
         left = facts[i]
-        for j in range(i + 1, n_facts):
-            right = facts[j]
-            if left.evidence.document_id == right.evidence.document_id:
-                continue
+        right = facts[j]
 
-            if sim_matrix is not None:
-                sim_score = float(sim_matrix[i, j])
-            else:
-                tokens_l = _tokens(left.claim)
-                tokens_r = _tokens(right.claim)
-                sim_score = len(tokens_l & tokens_r) / max(1, len(tokens_l | tokens_r))
+        if tfidf_matrix is not None:
+            sim_score = float((tfidf_matrix[i] * tfidf_matrix[j].T).toarray()[0, 0])
+        else:
+            tokens_l = _tokens(left.claim)
+            tokens_r = _tokens(right.claim)
+            sim_score = len(tokens_l & tokens_r) / max(1, len(tokens_l | tokens_r))
 
-            y1 = _normalize_period_year(left.period)
-            y2 = _normalize_period_year(right.period)
-            same_period = (y1 is not None and y2 is not None and y1 == y2)
-            different_period = (y1 is not None and y2 is not None and y1 != y2)
+        y1 = _normalize_period_year(left.period)
+        y2 = _normalize_period_year(right.period)
+        same_period = (y1 is not None and y2 is not None and y1 == y2)
+        different_period = (y1 is not None and y2 is not None and y1 != y2)
 
-            ln, rn = left.normalized_value, right.normalized_value
-            has_numbers = (ln is not None and rn is not None)
+        ln, rn = left.normalized_value, right.normalized_value
+        has_numbers = (ln is not None and rn is not None)
 
-            # 1. Numeric claims comparison
-            if has_numbers and same_period and (sim_score >= 0.15 or bool(_tokens(left.claim) & _tokens(right.claim))):
-                mult = 1.0
-                if left.currency == "USD" and right.currency == "INR":
-                    mult = 83.0
-                elif left.currency == "INR" and right.currency == "USD":
-                    mult = 1 / 83.0
+        if has_numbers and same_period and (sim_score >= 0.15 or bool(_tokens(left.claim) & _tokens(right.claim))):
+            mult = 1.0
+            if left.currency == "USD" and right.currency == "INR":
+                mult = 83.0
+            elif left.currency == "INR" and right.currency == "USD":
+                mult = 1 / 83.0
 
-                diff_pct = abs((ln * mult) - rn) / max(abs(ln * mult), abs(rn), 1.0)
-                close = diff_pct < 0.03
+            diff_pct = abs((ln * mult) - rn) / max(abs(ln * mult), abs(rn), 1.0)
+            close = diff_pct < 0.03
 
-                relation = "corroborates" if close else "contradicts"
-                reason = "Same period and similar claim language; values are " + ("within 3.0%." if close else f"materially different ({diff_pct:.1%} variance: {left.value} vs {right.value}).")
-                confidence = round(min(0.95, 0.50 + sim_score * 0.45), 2)
+            relation = "corroborates" if close else "contradicts"
+            reason = "Same period and similar claim language; values are " + ("within 3.0%." if close else f"materially different ({diff_pct:.1%} variance: {left.value} vs {right.value}).")
+            confidence = round(min(0.95, 0.50 + sim_score * 0.45), 2)
 
-            elif has_numbers and different_period and (sim_score >= 0.15 or bool(_tokens(left.claim) & _tokens(right.claim))):
-                relation = "reconciles"
-                reason = f"The evidence refers to different reporting periods ({left.period or y1} vs {right.period or y2}), so the apparent variation is contextual."
-                confidence = round(min(0.95, 0.55 + sim_score * 0.40), 2)
+        elif has_numbers and different_period and (sim_score >= 0.15 or bool(_tokens(left.claim) & _tokens(right.claim))):
+            relation = "reconciles"
+            reason = f"The evidence refers to different reporting periods ({left.period or y1} vs {right.period or y2}), so the apparent variation is contextual."
+            confidence = round(min(0.95, 0.55 + sim_score * 0.40), 2)
 
-            elif sim_score < 0.28:
-                continue
+        elif sim_score < 0.28:
+            continue
 
-            elif different_period and (sim_score >= 0.35 or (left.subject == right.subject and left.subject != "unclassified statement")):
-                relation = "reconciles"
-                reason = f"The evidence refers to different reporting periods ({left.period or y1} vs {right.period or y2}), so the apparent variation is contextual."
-                confidence = round(min(0.95, 0.50 + sim_score * 0.45), 2)
+        elif different_period and (sim_score >= 0.35 or (left.subject == right.subject and left.subject != "unclassified statement")):
+            relation = "reconciles"
+            reason = f"The evidence refers to different reporting periods ({left.period or y1} vs {right.period or y2}), so the apparent variation is contextual."
+            confidence = round(min(0.95, 0.50 + sim_score * 0.45), 2)
 
-            elif sim_score >= 0.50:
-                relation = "corroborates"
-                reason = "Different wording has substantial semantic topic overlap; review the linked receipts to verify identity."
-                confidence = round(min(0.95, 0.40 + sim_score * 0.50), 2)
-            else:
-                continue
+        elif sim_score >= 0.50:
+            relation = "corroborates"
+            reason = "Different wording has substantial semantic topic overlap; review the linked receipts to verify identity."
+            confidence = round(min(0.95, 0.40 + sim_score * 0.50), 2)
+        else:
+            continue
 
-            relations.append({
-                "id": f"r:{left.id}:{right.id}",
-                "type": relation,
-                "reason": reason,
-                "confidence": confidence,
-                "similarity_score": round(sim_score, 3),
-                "left": left.json(),
-                "right": right.json()
-            })
+        relations.append({
+            "id": f"r:{left.id}:{right.id}",
+            "type": relation,
+            "reason": reason,
+            "confidence": confidence,
+            "similarity_score": round(sim_score, 3),
+            "left": left.json(),
+            "right": right.json()
+        })
 
     grouped: dict[tuple, dict] = {}
     for relation in relations:
@@ -322,11 +302,9 @@ def relate(facts: list[Fact]) -> list[dict]:
 
     all_rels = list(grouped.values())
     
-    # Balanced selection across relation types so reconciles & contradicts are prominently included
     corrob_rels = sorted([r for r in all_rels if r["type"] == "corroborates"], key=lambda x: x["confidence"], reverse=True)
     contra_rels = sorted([r for r in all_rels if r["type"] == "contradicts"], key=lambda x: x["confidence"], reverse=True)
     recon_rels = sorted([r for r in all_rels if r["type"] == "reconciles"], key=lambda x: x["confidence"], reverse=True)
 
-    # Balance across categories
     result = recon_rels[:40] + contra_rels[:30] + corrob_rels[:50]
     return sorted(result, key=lambda x: x["confidence"], reverse=True)[:100]
